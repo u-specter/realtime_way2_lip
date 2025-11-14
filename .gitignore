@@ -16,3 +16,4 @@ Wav2Lip/checkpoints/
 openvino_model/
 node_modules
 bkp/
+server.log

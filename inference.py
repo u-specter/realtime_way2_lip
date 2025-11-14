@@ -306,13 +306,21 @@ def update_frames(full_frames, stream, inference_pipline, original_frame=None):
     # convert recording to mel chunks
     audio_data = inference_pipline.record_audio_stream(stream)
 
-    # Check for silence - close mouth during pauses (more sensitive detection)
+    # Check for silence - close mouth during pauses
+    # Используем более высокий порог чтобы не реагировать на фоновый шум
     audio_rms = np.sqrt(np.mean(audio_data.astype(np.float32)**2))
-    silence_threshold = 150  # Lower threshold = more sensitive pause detection
 
-    if audio_rms < silence_threshold and original_frame is not None:
-        # Audio is silent (pause detected), return original image with closed mouth
-        print(f"Pause detected (RMS: {audio_rms:.2f}), closing mouth")
+    # Более высокий порог - реагирует только на явную речь
+    silence_threshold = 500  # Повышен с 150 до 500 для игнорирования фонового шума
+
+    # Дополнительная проверка: есть ли реальная речевая активность
+    # Проверяем пиковые значения (должны быть выше среднего в 3+ раза)
+    audio_peak = np.max(np.abs(audio_data.astype(np.float32)))
+    speech_detected = (audio_rms > silence_threshold) and (audio_peak > audio_rms * 3)
+
+    if not speech_detected and original_frame is not None:
+        # Нет речи - закрываем рот (показываем оригинальное изображение)
+        print(f"🔇 Silence (RMS: {audio_rms:.0f}, Peak: {audio_peak:.0f}) - mouth CLOSED")
 
         # Clear generated frames cache on silence
         all_generated_frames = []
@@ -325,7 +333,7 @@ def update_frames(full_frames, stream, inference_pipline, original_frame=None):
         return (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer + b'\r\n')
 
-    print(f"Audio detected (RMS: {audio_rms:.2f}), processing lip-sync")
+    print(f"🗣️  Speech detected (RMS: {audio_rms:.0f}, Peak: {audio_peak:.0f}) - mouth OPENING")
     mel_chunks = inference_pipline.get_mel_chunks(audio_data)
     print(f"Time to process audio input {time()-stime}")
 
